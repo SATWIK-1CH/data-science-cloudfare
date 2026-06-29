@@ -998,6 +998,296 @@ const DATA = [
     ]
   },
   {
+    id:"geo-vs-switchback-vs-user", num:"Q18", title:"Marketplace & Interference",
+    topic:"Marketplace & Interference", difficulty:"Hard",
+    prompt:"Compare geo (cluster) randomisation, switchback, and user-level for a surge-pricing change. Trade-offs of each?",
+    why:"Pricing touches shared supply, so user-level is usually wrong — but geo and switchback trade off differently on power, carryover, and what they can measure. They want a structured matrix, not a single pick.",
+    answer:[
+      {p:"All three are answers to the same question: where do you contain the interference a pricing change creates? The right one depends on how long the effect lingers and how much power you can afford to lose."},
+      {steps:[
+        {b:"User-level",t:"Highest power (millions of units), cleanest stats \u2014 but invalid here. Treated and control riders share the same drivers in the same city at the same time, so SUTVA breaks and the estimate is biased. Use only when the effect genuinely doesn't touch shared supply."},
+        {b:"Geo / cluster (whole cities)",t:"Assign entire cities to treatment or control. Contains all supply spillovers inside a treated city, and naturally captures the TOTAL marketplace effect (both sides). Cost: very few units (tens of cities), high between-city variance \u2192 low power, and you need matched pairs or synthetic control to handle heterogeneity. Best when the effect has long carryover or you must measure equilibrium/network outcomes."},
+        {b:"Switchback (city \u00D7 time-block)",t:"Each city flips treatment/control over short windows. Recovers the power geo loses by turning one city into many time blocks, and still contains within-window supply effects. Cost: only valid if the effect is short-lived relative to the block; needs burn-in for carryover and autocorrelation-robust SEs. Best for short-acting pricing/surge/matching changes."}
+      ]},
+      {callout:"tip|Decision rule: short-lived effect \u2192 switchback (power). Long carryover or you need the full equilibrium/network effect \u2192 geo. Effect doesn't touch shared supply at all \u2192 user-level."},
+      {callout:"warn|Surge specifically: the effect is short-acting AND it reshapes supply within minutes, so switchback at city \u00D7 hour is usually the default \u2014 but if you care about how surge changes driver behaviour over days (relocation, churn), that carryover pushes you to geo."}
+    ],
+    mnemonic:"User = power, no validity. Geo = validity + total effect, low power. Switchback = power back, only if short-acting.",
+    takeaways:[
+      "Frame all three as different containers for the same interference, then pick on carryover length + power budget.",
+      "Geo uniquely measures the total marketplace (equilibrium) effect; switchback trades some of that for power.",
+      "Name the switchback validity condition out loud: effect must be short relative to the block."
+    ],
+    traps:[
+      "Picking switchback reflexively without checking the effect is short-lived.",
+      "Forgetting geo's hidden advantage \u2014 it captures the full equilibrium effect, not just one side."
+    ]
+  },
+
+  {
+    id:"total-marketplace-effect", num:"Q19", title:"Marketplace & Interference",
+    topic:"Marketplace & Interference", difficulty:"Hard",
+    prompt:"How do you estimate the TOTAL marketplace effect of a driver incentive \u2014 not just the driver-side lift \u2014 given spillovers to riders?",
+    why:"A driver incentive that boosts supply also changes wait times, prices, and conversion for riders. Measuring only the treated side overstates or misreads the net effect. They want you to think in equilibrium, not one-sided.",
+    answer:[
+      {p:"The trap: randomise drivers, measure driver hours, declare victory. But more supply \u2192 shorter waits / lower surge \u2192 more rider conversion \u2192 more trips \u2014 and some of that demand would have happened anyway, just served faster. The driver-side metric misses the rider-side response and the cannibalisation."},
+      {h:"The fix \u2014 randomise the market, not the side"},
+      {bullets:[
+        "<b>Geo or switchback at the city level</b> so both sides experience the same regime. The treated unit's outcome is the net marketplace effect (completed trips, GMV, total welfare) \u2014 supply and demand responses are both inside the measurement.",
+        "<b>Measure both-side metrics:</b> driver hours/utilisation AND rider wait time, conversion, cancellations. The story is only complete when you can show the mechanism: supply up \u2192 wait down \u2192 conversion up.",
+        "<b>Watch for cannibalisation / reallocation:</b> drivers may shift from a neighbouring untreated area, inflating the treated-area gain while depleting elsewhere. Geo borders leak \u2014 check spillover into adjacent control regions."
+      ]},
+      {callout:"warn|A pure driver-side read is a partial-equilibrium estimate. The number leadership actually wants \u2014 'what did this incentive do to the marketplace?' \u2014 is the general-equilibrium effect, and only a market-level design recovers it."},
+      {callout:"tip|If you can only run a driver-randomised test, be explicit: 'this measures the direct supply response, not the rider-side downstream effect or cross-area reallocation \u2014 so treat it as an upper-ish bound on the per-driver lift, not the net marketplace ROI.'"}
+    ],
+    mnemonic:"Randomise the market, not the side \u2014 the net effect lives in the equilibrium, not one ledger.",
+    takeaways:[
+      "One-sided randomisation gives a partial-equilibrium effect; market-level randomisation gives the total effect.",
+      "Always pair the treated-side metric with the other-side response metric to show the mechanism.",
+      "Check adjacent control regions for reallocation/spillover \u2014 driver supply is mobile."
+    ],
+    traps:[
+      "Reporting the driver-side lift as the marketplace ROI.",
+      "Ignoring cross-area reallocation that makes the treated area look better at a neighbour's expense."
+    ]
+  },
+
+  {
+    id:"srm", num:"Q20", title:"Analysis & Pitfalls",
+    topic:"Analysis & Pitfalls", difficulty:"Core",
+    prompt:"You expected a 50/50 split but observe 52/48. What is Sample Ratio Mismatch, how do you detect it, and why must you stop before reading results?",
+    why:"SRM is the single most important sanity check, and a 2% imbalance on large N is almost never chance. It usually signals a bug that biases the whole experiment \u2014 reading results through a broken assignment is worse than no test.",
+    answer:[
+      {p:"<b>SRM</b> = the observed allocation between arms differs from the intended ratio by more than chance allows. On large N, even a 51/49 split can be wildly significant \u2014 randomisation almost never drifts that far on its own."},
+      {h:"How to detect it"},
+      {p:"Run a chi-squared goodness-of-fit test of observed counts against the expected ratio. A tiny p-value (say < 0.001) on the split itself means SRM. Make this an automated day-one gate, before anyone looks at the metric."},
+      {h:"Why you must stop"},
+      {bullets:[
+        "SRM means the assignment mechanism is broken \u2014 and whatever broke it is almost certainly <b>correlated with the outcome</b>, so the groups aren't comparable. The treatment-vs-control gap is now confounded.",
+        "Common causes: bot/crawler traffic landing in one arm, a redirect or latency difference that drops users from treatment, logging that fires asymmetrically, a bad bucketing hash, or triggering that differs by arm.",
+        "Any 'result' you read is uninterpretable \u2014 you can't tell the treatment effect from the assignment bias. Fix the cause, don't 'adjust' your way around it."
+      ]},
+      {callout:"warn|SRM invalidates the experiment; it is not a small nuisance to footnote. A significant primary metric on top of an SRM is a red flag, not a win."}
+    ],
+    mnemonic:"SRM = broken randomisation \u2192 confounded groups \u2192 result uninterpretable. Gate it on day one.",
+    takeaways:[
+      "Detect with a chi-squared test on the split itself; automate it as a launch gate.",
+      "The danger is that the cause of the imbalance correlates with the outcome \u2014 so the groups aren't comparable.",
+      "On SRM you stop and fix the cause; you never reinterpret the metric through a broken assignment."
+    ],
+    traps:[
+      "Dismissing a 52/48 split as 'close enough' \u2014 on large N it's almost never chance.",
+      "Reading the primary metric anyway and reporting a 'win.'"
+    ]
+  },
+
+  {
+    id:"simpsons", num:"Q21", title:"Analysis & Pitfalls",
+    topic:"Analysis & Pitfalls", difficulty:"Hard",
+    prompt:"Treatment looks worse overall but better in every market segment. What happened, and which number do you trust?",
+    why:"Simpson's paradox is a favourite because it tests whether you reason about confounding and weighting rather than reflexively trusting the aggregate. The 'which number' answer reveals whether you understand the mechanism.",
+    answer:[
+      {p:"This is <b>Simpson's paradox</b>: a trend that holds within every subgroup reverses when the subgroups are pooled, because the segments have different baseline rates AND different treatment/control mixes."},
+      {h:"The mechanism"},
+      {example:"Suppose Market A converts at 2% and Market B at 20%. If treatment happens to be over-represented in low-baseline Market A and control in high-baseline Market B, the pooled treatment average gets dragged down by A's low rate \u2014 even though treatment beat control in BOTH A and B. The aggregate reflects the segment MIX, not the treatment effect.\n\nUsually this means an <b>SRM within segments</b>: assignment ratios differ by segment."},
+      {h:"Which number to trust"},
+      {bullets:[
+        "<b>Trust the segment-level (conditional) effects</b> when the mix imbalance is an artefact of broken/uneven assignment \u2014 the within-segment comparison is the clean apples-to-apples one.",
+        "<b>Reconcile, don't just pick:</b> compute a properly weighted aggregate (e.g. weight each segment by its true population share, or use a regression that controls for segment) so the overall number reflects the real population, not the experiment's accidental mix.",
+        "The honest read is almost always: 'treatment is positive; the raw aggregate was confounded by segment-level assignment imbalance.'"
+      ]},
+      {callout:"tip|First action: check for SRM within each segment. Simpson's reversals are frequently a symptom of uneven assignment, not a deep mystery."}
+    ],
+    mnemonic:"Within-segment = clean comparison; pooled = contaminated by the mix. Trust conditional, then re-weight.",
+    takeaways:[
+      "The reversal comes from differing baselines + differing treatment/control mix across segments.",
+      "Trust the segment-level effects and reconstruct a population-weighted aggregate, rather than blindly trusting the raw pooled number.",
+      "Check for within-segment SRM first \u2014 it's the usual culprit."
+    ],
+    traps:[
+      "Reflexively trusting the aggregate because it's 'the overall result.'",
+      "Picking the segment numbers without explaining the weighting that reconciles them with the aggregate."
+    ]
+  },
+
+  {
+    id:"multiple-comparisons", num:"Q22", title:"Analysis & Pitfalls",
+    topic:"Analysis & Pitfalls", difficulty:"Core",
+    prompt:"You tested 8 metrics across 4 segments \u2014 32 comparisons \u2014 and 2 came back 'significant.' What's the problem and how do you handle it?",
+    why:"With dozens of concurrent tests and rich segmentation, false discovery is rampant. They want you to recognise the multiplicity, quantify the expected false positives, and apply the right correction \u2014 without killing all power.",
+    answer:[
+      {p:"The problem is <b>multiple comparisons</b>: every test at \u03B1 = 5% has a 5% chance of a false positive under the null. Run 32 and you'd expect ~1.6 'significant' results by pure chance even if nothing works. Finding 2 is exactly what noise predicts \u2014 so on their own they're not evidence of anything."},
+      {h:"How to handle it"},
+      {steps:[
+        {b:"Pre-register one primary metric",t:"The cleanest defence. The decision hinges on the pre-specified primary; everything else is exploratory and clearly labelled as such. Most of the multiplicity problem disappears if only one comparison is confirmatory."},
+        {b:"Correct for the rest",t:"Bonferroni (divide \u03B1 by the number of tests) is simple but conservative \u2014 good when any false positive is costly. Benjamini-Hochberg (control the false discovery rate) is less harsh and better when you're screening many metrics and can tolerate some false positives among the 'discoveries.'"},
+        {b:"Treat exploratory hits as hypotheses",t:"A segment that lights up exploratorily isn't a result \u2014 it's a candidate to confirm in a fresh, pre-registered test. Don't ship on it."}
+      ]},
+      {callout:"warn|Bonferroni vs BH: Bonferroni controls the chance of ANY false positive (family-wise error); BH controls the PROPORTION of false positives among rejections (FDR). Pick based on whether one false positive is catastrophic or just noise in a screen."}
+    ],
+    mnemonic:"32 tests at 5% \u2248 1.6 false positives expected \u2014 finding 2 is noise. Pre-register one primary, correct the rest.",
+    takeaways:[
+      "Quantify the expected false positives (#tests \u00D7 \u03B1) to show why the hits aren't evidence.",
+      "Pre-registering a single primary metric removes most of the problem at the source.",
+      "Bonferroni = family-wise error (conservative); BH = false discovery rate (better for screens)."
+    ],
+    traps:[
+      "Reporting the 2 hits as wins without acknowledging multiplicity.",
+      "Applying Bonferroni to a 50-metric exploratory screen and then claiming 'nothing was significant.'"
+    ]
+  },
+
+  {
+    id:"guardrail-tradeoff", num:"Q23", title:"Analysis & Pitfalls",
+    topic:"Analysis & Pitfalls", difficulty:"Hard",
+    prompt:"Treatment wins on the primary (conversion) but a guardrail \u2014 cancellation rate or unit economics \u2014 degrades. How do you make the ship/no-ship call?",
+    why:"This is the core Growth-Strategy judgement call: a primary win is not a decision. They're checking whether you weigh net business value and respect the guardrail thresholds you pre-committed, rather than shipping the headline number.",
+    answer:[
+      {p:"A primary win plus a guardrail breach is not a ship by default \u2014 the guardrail exists precisely to gate this case. The call is about NET value, in money, not which metric 'won.'"},
+      {steps:[
+        {b:"Quantify both in a common unit",t:"Translate the conversion lift and the guardrail degradation into the same currency \u2014 incremental contribution margin. +X% conversion at \u20ACa per order vs \u2212Y% margin at \u20ACb per order. Net positive or negative?"},
+        {b:"Check against the pre-registered threshold",t:"If the guardrail breached the threshold you set BEFORE the test, the default is no-ship \u2014 that's what the threshold was for. Re-deciding the threshold after seeing data is moving the goalposts."},
+        {b:"Interrogate the mechanism",t:"WHY did the guardrail move? If cheaper delivery drove low-intent orders that cancel more, the conversion 'win' is partly junk demand. If it's a fixable side-effect (e.g. courier capacity), maybe ship with a mitigation."},
+        {b:"Look for a targeted version",t:"Often the answer is 'ship to the segment where net value is positive, not everyone.' Heterogeneous effects mean the global call may be wrong while a targeted call is right."}
+      ]},
+      {callout:"tip|The senior framing: 'A primary win is a candidate, not a decision. I ship on net contribution against pre-set guardrail thresholds \u2014 and if it's mixed, I look for the segment or mitigation that makes it net-positive rather than shipping or killing wholesale.'"}
+    ],
+    mnemonic:"Primary win = candidate, not decision. Net it out in money against the pre-set guardrail threshold.",
+    takeaways:[
+      "Convert both the primary and the guardrail into a common unit (margin) and net them.",
+      "A pre-registered guardrail breach defaults to no-ship \u2014 don't move the goalposts after seeing data.",
+      "Consider a targeted ship (the net-positive segment) or a mitigation before a binary ship/kill."
+    ],
+    traps:[
+      "Shipping on the headline conversion number and footnoting the guardrail.",
+      "Re-deciding the guardrail threshold after the result is in."
+    ]
+  },
+
+  {
+    id:"triggered-dilution", num:"Q24", title:"Analysis & Pitfalls",
+    topic:"Analysis & Pitfalls", difficulty:"Hard",
+    prompt:"Your feature only affects users who reach a specific step (e.g. the promo banner at checkout). Why is analysing ALL assigned users wrong, and what's the fix?",
+    why:"Dilution is a subtle, high-impact bias: including users who could never have been affected shrinks the measured effect toward zero and tanks power. The fix \u2014 triggered analysis \u2014 has to be set up correctly to avoid re-introducing bias.",
+    answer:[
+      {p:"If only checkout-reaching users can possibly see the banner, then everyone who never reached checkout has an identical experience in both arms \u2014 they add noise and zero signal. Including them <b>dilutes</b> the effect: the true effect among the affected is averaged down by a mass of unaffected users, shrinking the estimate toward zero and slashing power."},
+      {h:"The fix \u2014 triggered (exposure-based) analysis"},
+      {bullets:[
+        "Analyse only users who <b>triggered</b> the condition (reached the step where treatment could act) \u2014 in BOTH arms. The control 'trigger' is the counterfactual: control users who reached the same point and would have seen the banner had they been in treatment.",
+        "This measures the effect on the population that could actually be affected \u2014 a cleaner, higher-powered estimate (the local effect among the exposed)."
+      ]},
+      {callout:"warn|The trap inside the fix: you must define the trigger symmetrically. If you can only identify 'triggered' users in treatment (because the banner-render event only fires there), you'll compare exposed-treatment to all-control \u2192 selection bias. Trigger must be a pre-treatment condition logged identically in both arms."},
+      {callout:"tip|Be explicit about which estimand you're reporting: the triggered analysis gives the effect on the EXPOSED population, which is larger than the all-assigned (intent-to-treat) effect. For rollout ROI you may want both \u2014 the per-exposed effect for the mechanism, the diluted/ITT effect for the realistic fleet-wide impact."}
+    ],
+    mnemonic:"Unaffected users add noise, not signal \u2014 they dilute the effect. Trigger on a symmetric pre-treatment condition in both arms.",
+    takeaways:[
+      "Including never-affected users shrinks the effect toward zero and destroys power.",
+      "Triggered analysis restores power by analysing only the exposable population \u2014 in both arms.",
+      "The trigger must be symmetric and pre-treatment, or you swap dilution for selection bias."
+    ],
+    traps:[
+      "Analysing all assigned users when most could never be affected.",
+      "Defining 'triggered' using a treatment-only event \u2192 selection bias in the comparison."
+    ]
+  },
+
+  {
+    id:"bayesian-prob-to-beat", num:"Q25", title:"Fundamentals",
+    topic:"Fundamentals", difficulty:"Hard",
+    prompt:"A stakeholder asks 'what's the probability treatment is better than control?' Your frequentist test can't answer that directly. How do you respond \u2014 and how do CIs differ from credible intervals?",
+    why:"This exposes whether you understand what frequentist outputs actually mean and when a Bayesian framing communicates better to a business audience that wants a probability of being right.",
+    answer:[
+      {p:"The honest frequentist answer is awkward: a p-value and a confidence interval don't give P(treatment better). The CI is a statement about the PROCEDURE \u2014 'if we repeated this experiment many times, 95% of the intervals built this way would contain the true effect' \u2014 not 'there's a 95% chance the effect is in THIS interval.' The parameter is fixed; the interval is random."},
+      {h:"What actually answers the stakeholder"},
+      {bullets:[
+        "A <b>Bayesian</b> analysis does answer it directly: with a prior and the data, you get a posterior over the effect, and you can read off P(effect > 0) \u2014 literally 'an 92% probability treatment beats control.' That's the quantity they're asking for.",
+        "A <b>credible interval</b> (the Bayesian analogue) DOES support the intuitive reading: 'given the data and prior, there's a 95% probability the effect lies in this range.' That's why it communicates so much better."
+      ]},
+      {h:"CI vs credible interval \u2014 the distinction"},
+      {example:"<b>Confidence interval (frequentist):</b> randomness is in the interval; the parameter is fixed. The 95% is a long-run coverage property of the method, not a probability about this specific interval.\n\n<b>Credible interval (Bayesian):</b> the parameter is treated as a random variable with a posterior; the 95% is a direct probability statement about where the effect lies, given data + prior."},
+      {callout:"tip|Practical response: 'Frequentist significance says the data would be surprising if there were no effect. If you want the probability treatment is better, I'll run a Bayesian read \u2014 here's the posterior, P(treatment > control) \u2248 X%. Just note it depends on the prior, which I'll state explicitly.' That gives them the decision-ready number without misrepresenting the frequentist output."}
+    ],
+    mnemonic:"CI = property of the procedure (fixed parameter). Credible interval = probability about the parameter (given prior + data).",
+    takeaways:[
+      "A frequentist CI is a long-run coverage statement, NOT '95% chance the effect is in here.'",
+      "Bayesian posteriors give P(treatment better) directly \u2014 the quantity stakeholders actually want.",
+      "When you offer the Bayesian number, state the prior \u2014 the answer depends on it."
+    ],
+    traps:[
+      "Telling a stakeholder a 95% CI means '95% chance the true effect is in this range' (that's the credible-interval reading).",
+      "Quoting a Bayesian probability without disclosing the prior."
+    ]
+  },
+
+  {
+    id:"bandit-vs-ab", num:"Q26", title:"Advanced & Causal",
+    topic:"Advanced & Causal", difficulty:"Hard", note:"Your bandit edge",
+    prompt:"When would you use a multi-armed bandit instead of a fixed A/B test? What do you give up?",
+    why:"With your Thompson-sampling background this is a place to be visibly strong \u2014 but the senior signal is knowing the COSTS of bandits, not just selling them. Interviewers probe whether you'd reach for the sophisticated tool inappropriately.",
+    answer:[
+      {p:"A fixed A/B test splits traffic evenly and reads at the end \u2014 it optimises for a clean, unbiased ESTIMATE of the effect. A bandit adaptively shifts traffic toward the arm that's winning as evidence accrues \u2014 it optimises for REGRET (cumulative reward during the experiment). Different objectives."},
+      {h:"Use a bandit when"},
+      {bullets:[
+        "The cost of showing the worse arm is high and the window is short \u2014 e.g. promo allocation, homepage content, time-limited campaigns \u2014 so you want to earn while you learn.",
+        "You have many arms and want to concentrate traffic on promising ones rather than splitting thin (Thompson sampling shines here).",
+        "You'll keep exploiting the winner in production \u2014 the goal is performance, not a publishable effect size."
+      ]},
+      {h:"What you give up (the part they're probing)"},
+      {bullets:[
+        "<b>Clean inference.</b> Adaptive assignment breaks the i.i.d. assumptions behind standard tests \u2014 naive confidence intervals are biased, and estimating the effect of the LOSING arms is much harder (they got starved of data).",
+        "<b>Sensitivity to non-stationarity & delayed feedback.</b> If the metric has slow feedback (retention) or shifts over time, a bandit can lock onto an early-but-wrong winner. Classic A/B with a fixed horizon is safer for slow or seasonal effects.",
+        "<b>Interpretability for guardrails.</b> A bandit optimises one reward; it's awkward when you must monitor multiple guardrails and make a holistic ship decision."
+      ]},
+      {callout:"warn|Anti-pattern: reaching for a bandit when the real need is a precise, unbiased read for a high-stakes one-time rollout decision. There, the even-split A/B is the right tool \u2014 you want the estimate, not minimal regret."},
+      {callout:"tip|If asked, connect to your work honestly: 'I've run Thompson-sampling bandits with a budget regularizer for discount allocation \u2014 so I know the appeal, and also why I wouldn't use one when the deliverable is a clean causal estimate for a launch decision.'"}
+    ],
+    mnemonic:"A/B optimises the estimate; bandit optimises regret. Bandit when earning-while-learning beats clean inference \u2014 not for high-stakes one-time reads.",
+    takeaways:[
+      "The objective differs: unbiased effect estimate (A/B) vs minimal cumulative regret (bandit).",
+      "Bandits cost you clean inference, struggle with delayed/non-stationary feedback, and complicate multi-guardrail decisions.",
+      "The senior move is naming when NOT to use one \u2014 high-stakes one-time rollout reads want the even-split A/B."
+    ],
+    traps:[
+      "Selling bandits as strictly better without naming the inference and non-stationarity costs.",
+      "Using a bandit when the deliverable is a precise causal estimate for a launch."
+    ]
+  },
+
+  {
+    id:"synthetic-control", num:"Q27", title:"Advanced & Causal",
+    topic:"Advanced & Causal", difficulty:"Hard",
+    prompt:"You only have observational data on a surge-pricing change rolled out in one city \u2014 no clean randomisation. Which causal method fits, and what assumptions must hold?",
+    why:"Lots of real marketplace changes ship without a clean RCT (regulatory, ops-driven, one-city rollouts). They want to see you reach for the right quasi-experimental tool and state its assumptions honestly \u2014 not pretend observational data is as good as an experiment.",
+    answer:[
+      {p:"With one treated city and many untreated ones, the natural tool is a <b>synthetic control</b> (or difference-in-differences if you have a clean comparison group). Build a weighted combination of untreated 'donor' cities that closely tracks the treated city's PRE-period outcome, then use that synthetic city as the counterfactual after the change."},
+      {h:"How it works"},
+      {bullets:[
+        "Choose weights over donor cities so the synthetic matches the treated city's pre-intervention trajectory (and key predictors).",
+        "After the intervention, the gap between the real treated city and its synthetic twin is the estimated effect.",
+        "Inference via placebo tests: apply the same method to untreated cities and check the treated city's gap is unusually large vs the placebo distribution."
+      ]},
+      {h:"Assumptions that must hold"},
+      {steps:[
+        {b:"Parallel/replicable pre-trend",t:"The donors must reproduce the treated city's pre-period behaviour well \u2014 a good pre-fit is the credibility test. (For DiD: parallel trends \u2014 absent treatment, treated and control would have moved together.)"},
+        {b:"No interference / no spillover to donors",t:"The surge change in the treated city must not affect the donor cities (SUTVA again). If drivers relocate across city borders, donors are contaminated."},
+        {b:"No concurrent shocks",t:"Nothing else hit the treated city at the same time (a competitor launch, a local event, a regulatory change), or you'll attribute it to surge."},
+        {b:"Donors are genuinely comparable",t:"The donor pool must contain cities similar enough that a convex combination can match \u2014 and none of them are themselves treated."}
+      ]},
+      {callout:"warn|Be honest about the ceiling: this is a quasi-experiment. It's the right tool when an RCT is impossible, but the causal claim rests on untestable assumptions \u2014 so present it with the pre-fit quality and placebo tests as evidence, and flag the threats rather than claiming RCT-level certainty."},
+      {callout:"tip|Mention the alternatives and when they'd fit: DiD (clean control group, parallel trends), regression discontinuity (a sharp threshold rule assigns treatment), interrupted time series (no good control but a sharp before/after). Picking the right one for the data-generating process is the signal."}
+    ],
+    mnemonic:"One treated unit, many donors \u2192 synthetic control. Credibility = pre-fit + placebo tests; the assumptions are untestable, so flag them.",
+    takeaways:[
+      "Synthetic control builds a weighted donor 'twin' that matches the pre-period; the post-period gap is the effect.",
+      "Key assumptions: good pre-fit, no spillover to donors, no concurrent shocks, comparable untreated donors.",
+      "It's a quasi-experiment \u2014 present pre-fit and placebo evidence and name the threats; don't claim RCT certainty."
+    ],
+    traps:[
+      "Treating an observational estimate as if it were experimental.",
+      "Ignoring driver spillover into donor cities (contaminates the counterfactual)."
+    ]
+  },
+  {
     id:"craft-both-halves", num:"C1", title:"Delivery Craft",
     topic:"Delivery Craft", difficulty:"Reflex",
     prompt:"The recurring failure mode: the definition lands, the second half goes missing.",
